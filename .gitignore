@@ -1,0 +1,31 @@
+# Ignorar pastas com datasets
+cifar_10_batches/
+cifar_100_python/
+
+# Ignorar arquivos comprimidos das datasets
+cifar-10-python.tar.gz
+cifar-100-python.tar.gz
+
+# Ignorar arquivos de configuração do sistema
+.DS_Store
+Thumbs.db
+
+# Ignorar arquivos de log
+*.log
+
+# Ignorar arquivos temporários
+*.tmp
+*.swp
+*.swo
+
+# Ignorar arquivos gerados pelo Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ignorar arquivos gerados pelo Jupyter Notebook
+.ipynb_checkpoints/
+
+# Ignorar arquivos gerados pelo Visual Studio Code
+.vscode/

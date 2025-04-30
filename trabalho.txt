@@ -1,0 +1,14 @@
+
+https://www.kaggle.com/datasets/dmitrybabko/speech-emotion-recognition-en
+
+https://huggingface.co/datasets/MLCommons/peoples_speech
+
+
+https://huggingface.co/datasets/speechbrain/common_language - varias linguas
+
+https://huggingface.co/docs/transformers/en/model_doc/audio-spectrogram-transformer
+
+
+dataset crema:
+https://github.com/CheyneyComputerScience/CREMA-D
+https://www.kaggle.com/datasets/ejlok1/cremad
