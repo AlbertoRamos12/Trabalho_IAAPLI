@@ -1,0 +1,3 @@
+# ...similar to test_classifiers_cifar10.py...
+# Replace CIFAR-10 references with CIFAR-100.
+# Save the output graph as "cifar100_classifiers_comparison.png".
