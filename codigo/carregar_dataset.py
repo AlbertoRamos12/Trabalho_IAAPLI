@@ -8,7 +8,7 @@ import random
 matplotlib.use('TkAgg')  # Usa o backend "TkAgg" para renderização gráfica com GUI
 
 # Caminho para a pasta onde estão os batches
-data_dir = 'cifar_10_batches'
+data_dir = '../cifar_10_batches'
 
 # Função para carregar ficheiros pickle
 def unpickle(file):
