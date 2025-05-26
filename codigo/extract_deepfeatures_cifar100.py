@@ -39,9 +39,12 @@ def unpickle(file):
 # Carregar os dados do CIFAR-100
 meta = unpickle(os.path.join(data_dir, 'meta'))  # Informações sobre as classes
 train_data = unpickle(os.path.join(data_dir, 'train'))  # Dados de treino
+test_data = unpickle(os.path.join(data_dir, 'test'))    # Dados de teste
 
-images = train_data[b'data']
-labels = np.array(train_data[b'fine_labels'])
+train_images = train_data[b'data']
+train_labels = np.array(train_data[b'fine_labels'])
+test_images = test_data[b'data']
+test_labels = np.array(test_data[b'fine_labels'])
 
 # ----------------------------
 # DEFINIÇÃO DO DATASET
@@ -72,8 +75,8 @@ transform = transforms.Compose([
     transforms.ToTensor(),
 ])
 
-dataset = CustomCIFARDataset(images, labels, transform=transform)
-dataloader = DataLoader(dataset, batch_size=32, shuffle=False)
+# dataset = CustomCIFARDataset(images, labels, transform=transform)
+# dataloader = DataLoader(dataset, batch_size=32, shuffle=False)
 
 # ----------------------------
 # DEFINIÇÃO DE UMA CNN SIMPLES
@@ -104,23 +107,34 @@ model.eval()
 # ----------------------------
 # EXTRAIR DEEP FEATURES
 # ----------------------------
-print("Extraindo deep features...")
-deep_features = []
-deep_labels = []
+# Função para extrair deep features de um conjunto de imagens e labels
+def extract_features(images, labels, model, device, batch_size=32):
+    dataset = CustomCIFARDataset(images, labels, transform=transform)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
+    features_list = []
+    labels_list = []
+    with torch.no_grad():
+        for inputs, targets in dataloader:
+            inputs = inputs.to(device)
+            features = model(inputs)
+            features_list.append(features.cpu().numpy())
+            labels_list.extend(targets.numpy())
+    features = np.vstack(features_list)
+    labels = np.array(labels_list)
+    return features, labels
 
-with torch.no_grad():
-    for inputs, targets in dataloader:
-        inputs = inputs.to(device)
-        features = model(inputs)
-        deep_features.append(features.cpu().numpy())
-        deep_labels.extend(targets.numpy())
+# Extrair e salvar deep features de treino
+print("Extraindo deep features de treino...")
+train_features, train_labels = extract_features(train_images, train_labels, model, device)
+output_train = os.path.join(deepfeatures_dir, "cifar100_deepfeatures_train.pkl")
+with open(output_train, "wb") as f:
+    pickle.dump({"features": train_features, "labels": train_labels}, f)
+print(f"Deep features de treino salvas em: {output_train}")
 
-deep_features = np.vstack(deep_features)
-deep_labels = np.array(deep_labels)
-
-# Salvar deep features em um arquivo
-output_file = os.path.join(deepfeatures_dir, "cifar100_deepfeatures.pkl")
-with open(output_file, "wb") as f:
-    pickle.dump({"features": deep_features, "labels": deep_labels}, f)
-
-print(f"Deep features salvas em: {output_file}")
+# Extrair e salvar deep features de teste
+print("Extraindo deep features de teste...")
+test_features, test_labels = extract_features(test_images, test_labels, model, device)
+output_test = os.path.join(deepfeatures_dir, "cifar100_deepfeatures_test.pkl")
+with open(output_test, "wb") as f:
+    pickle.dump({"features": test_features, "labels": test_labels}, f)
+print(f"Deep features de teste salvas em: {output_test}")

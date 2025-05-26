@@ -9,6 +9,7 @@ from torch.utils.data import Dataset, DataLoader
 import matplotlib.pyplot as plt
 import argparse
 import time
+from sklearn.model_selection import train_test_split
 
 # ----------------------------
 # CONFIGURAÇÕES GERAIS
@@ -64,6 +65,15 @@ test_data = unpickle(os.path.join(data_dir, 'test'))  # Dados de teste
 images = train_data[b'data']
 labels = np.array(train_data[b'fine_labels'])
 
+# Separar 20% para validação
+train_images, val_images, train_labels, val_labels = train_test_split(
+    images, labels, test_size=0.2, random_state=42, stratify=labels
+)
+
+# Imagens e rótulos do conjunto de teste
+test_images = test_data[b'data']
+test_labels = np.array(test_data[b'fine_labels'])
+
 # ----------------------------
 # DEFINIÇÃO DO DATASET
 # ----------------------------
@@ -97,8 +107,13 @@ transform = transforms.Compose([
 ])
 
 # Criação do dataset e dataloader
-dataset = CustomCIFARDataset(images, labels, transform=transform)
-dataloader = DataLoader(dataset, batch_size=32, shuffle=True)
+train_dataset = CustomCIFARDataset(train_images, train_labels, transform=transform)
+val_dataset = CustomCIFARDataset(val_images, val_labels, transform=transform)
+test_dataset = CustomCIFARDataset(test_images, test_labels, transform=transform)
+
+train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
+test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
 
 # ----------------------------
 # DEFINIÇÃO DE UMA CNN SIMPLES
@@ -138,6 +153,8 @@ optimizer = optim.Adam(model.parameters(), lr=0.001)
 print("Iniciando treino...")
 train_losses = []
 train_accuracies = []
+val_losses = []
+val_accuracies = []
 
 # Medir o tempo total de treinamento
 start_time = time.time()
@@ -149,33 +166,49 @@ for epoch in range(num_epochs):
     correct = 0
     total = 0
 
-    # Loop sobre os batches
-    for inputs, targets in dataloader:
+    model.train()
+    for inputs, targets in train_loader:
         inputs, targets = inputs.to(device), torch.tensor(targets).to(device)
 
-        optimizer.zero_grad()  # Zera os gradientes
-        outputs = model(inputs)  # Forward pass
-        loss = criterion(outputs, targets)  # Calcula a perda
-        loss.backward()  # Backward pass
-        optimizer.step()  # Atualiza os pesos
+        optimizer.zero_grad()
+        outputs = model(inputs)
+        loss = criterion(outputs, targets)
+        loss.backward()
+        optimizer.step()
 
         running_loss += loss.item()
-
-        # Calcula a acurácia
         _, predicted = torch.max(outputs, 1)
         total += targets.size(0)
         correct += (predicted == targets).sum().item()
 
-    # Calcula métricas da época
-    epoch_loss = running_loss / len(dataloader)
+    epoch_loss = running_loss / len(train_loader)
     epoch_accuracy = 100 * correct / total
     train_losses.append(epoch_loss)
     train_accuracies.append(epoch_accuracy)
 
+    # Validação
+    model.eval()
+    val_loss = 0.0
+    val_correct = 0
+    val_total = 0
+    with torch.no_grad():
+        for inputs, targets in val_loader:
+            inputs, targets = inputs.to(device), torch.tensor(targets).to(device)
+            outputs = model(inputs)
+            loss = criterion(outputs, targets)
+            val_loss += loss.item()
+            _, predicted = torch.max(outputs, 1)
+            val_total += targets.size(0)
+            val_correct += (predicted == targets).sum().item()
+    val_loss /= len(val_loader)
+    val_accuracy = 100 * val_correct / val_total
+    val_losses.append(val_loss)
+    val_accuracies.append(val_accuracy)
+
     epoch_end_time = time.time()
     epoch_duration = epoch_end_time - epoch_start_time
 
-    print(f"Época {epoch+1}/{num_epochs} - Loss: {epoch_loss:.4f}, Accuracy: {epoch_accuracy:.2f}%, Tempo: {epoch_duration:.2f} segundos")
+    print(f"Época {epoch+1}/{num_epochs} - Loss: {epoch_loss:.4f}, Accuracy: {epoch_accuracy:.2f}%, Val_Loss: {val_loss:.4f}, Val_Acc: {val_accuracy:.2f}%, Tempo: {epoch_duration:.2f} segundos")
 
 # Tempo total de treinamento
 end_time = time.time()
@@ -183,21 +216,39 @@ total_duration = end_time - start_time
 print(f"Treino concluído em {total_duration:.2f} segundos.")
 
 # Salvar o modelo treinado
-model_filename = f"simple_cnn_100_e{num_epochs}.pth"  # Nome do modelo com "100"
+model_filename = f"simple_cnn_100_e{num_epochs}.pth"
 model_path = os.path.join(model_dir, model_filename)
 torch.save(model.state_dict(), model_path)
 print(f"Modelo salvo em (CIFAR-100): {model_path}")
 
+# Teste final no conjunto de teste
+model.eval()
+test_loss = 0.0
+test_correct = 0
+test_total = 0
+with torch.no_grad():
+    for inputs, targets in test_loader:
+        inputs, targets = inputs.to(device), torch.tensor(targets).to(device)
+        outputs = model(inputs)
+        loss = criterion(outputs, targets)
+        test_loss += loss.item()
+        _, predicted = torch.max(outputs, 1)
+        test_total += targets.size(0)
+        test_correct += (predicted == targets).sum().item()
+test_loss /= len(test_loader)
+test_accuracy = 100 * test_correct / test_total
+print(f"Teste final - Loss: {test_loss:.4f}, Accuracy: {test_accuracy:.2f}%")
+
 # ----------------------------
 # GRÁFICO DE LOSS E ACCURACY
 # ----------------------------
-# Função para plotar métricas de treinamento
-def plot_training_metrics(train_losses, train_accuracies, graphics_dir):
-    plt.figure(figsize=(10, 5))
+def plot_training_metrics(train_losses, train_accuracies, val_losses, val_accuracies, graphics_dir):
+    plt.figure(figsize=(12, 5))
 
     # Loss
     plt.subplot(1, 2, 1)
-    plt.plot(range(1, len(train_losses) + 1), train_losses, marker='o', label='Loss')
+    plt.plot(range(1, len(train_losses) + 1), train_losses, marker='o', label='Train Loss')
+    plt.plot(range(1, len(val_losses) + 1), val_losses, marker='x', label='Val Loss')
     plt.xlabel('Época')
     plt.ylabel('Loss')
     plt.title('Loss por Época')
@@ -206,7 +257,8 @@ def plot_training_metrics(train_losses, train_accuracies, graphics_dir):
 
     # Accuracy
     plt.subplot(1, 2, 2)
-    plt.plot(range(1, len(train_accuracies) + 1), train_accuracies, marker='o', label='Accuracy')
+    plt.plot(range(1, len(train_accuracies) + 1), train_accuracies, marker='o', label='Train Acc')
+    plt.plot(range(1, len(val_accuracies) + 1), val_accuracies, marker='x', label='Val Acc')
     plt.xlabel('Época')
     plt.ylabel('Accuracy (%)')
     plt.title('Accuracy por Época')
@@ -216,10 +268,10 @@ def plot_training_metrics(train_losses, train_accuracies, graphics_dir):
     plt.tight_layout()
 
     # Salvar gráfico como PNG
-    graph_filename = f"simple_cnn_training_metrics_100_e{num_epochs}.png"  # Nome do gráfico com "100"
+    graph_filename = f"simple_cnn_training_metrics_100_e{num_epochs}.png"
     graph_path = os.path.join(graphics_dir, graph_filename)
     plt.savefig(graph_path)
     print(f"Gráfico salvo em (CIFAR-100): {graph_path}")
 
 # Salvar o gráfico após o treinamento
-plot_training_metrics(train_losses, train_accuracies, graphics_dir)
+plot_training_metrics(train_losses, train_accuracies, val_losses, val_accuracies, graphics_dir)

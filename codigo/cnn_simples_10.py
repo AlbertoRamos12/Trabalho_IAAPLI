@@ -23,14 +23,9 @@ print(f"Usando dispositivo: {device}")
 
 # Argumentos de linha de comando
 parser = argparse.ArgumentParser(description="Treinamento de uma CNN simples no CIFAR-10.")
-parser.add_argument("-b", "--batches", type=int, default=1, help="Número de batches de treino a usar (1-5).")
 parser.add_argument("-e", "--epochs", type=int, default=3, help="Número de épocas para o treinamento.")
 parser.add_argument("-d", "--data_dir", type=str, required=True, help="Caminho para o diretório do dataset CIFAR-10.")
 args = parser.parse_args()
-
-# Validar número de batches
-num_batches = max(1, min(args.batches, 5))  # Garante que está entre 1 e 5
-print(f"Usando {num_batches} batch(es) para o treinamento.")
 
 # Validar número de épocas
 num_epochs = max(1, args.epochs)  # Garante que o número de épocas seja pelo menos 1
@@ -61,14 +56,26 @@ def unpickle(file):
         return pickle.load(fo, encoding='bytes')
 
 # Carregar os batches do CIFAR-10
-images, labels = [], []
-for i in range(1, num_batches + 1):  # Carrega apenas o número de batches especificado
+train_images, train_labels = [], []
+val_images, val_labels = [], []
+for i in range(1, 6):  # Batches 1-5
     batch = unpickle(os.path.join(data_dir, f'data_batch_{i}'))
-    images.append(batch[b'data'])
-    labels.extend(batch[b'labels'])
+    if i <= 4:
+        train_images.append(batch[b'data'])
+        train_labels.extend(batch[b'labels'])
+    else:
+        val_images.append(batch[b'data'])
+        val_labels.extend(batch[b'labels'])
 
-images = np.vstack(images)  # Combina os batches em um único array
-labels = np.array(labels)
+train_images = np.vstack(train_images)
+train_labels = np.array(train_labels)
+val_images = np.vstack(val_images)
+val_labels = np.array(val_labels)
+
+# Carregar batch de teste
+test_batch = unpickle(os.path.join(data_dir, 'test_batch'))
+test_images = test_batch[b'data']
+test_labels = np.array(test_batch[b'labels'])
 
 # ----------------------------
 # DEFINIÇÃO DO DATASET
@@ -94,12 +101,18 @@ class CustomCIFARDataset(Dataset):
 
         return img_rgb, self.labels[idx]
 
+# Datasets e DataLoaders
 transform = transforms.Compose([
     transforms.ToTensor(),
 ])
 
-dataset = CustomCIFARDataset(images, labels, transform=transform)
-dataloader = DataLoader(dataset, batch_size=32, shuffle=True)
+train_dataset = CustomCIFARDataset(train_images, train_labels, transform=transform)
+val_dataset = CustomCIFARDataset(val_images, val_labels, transform=transform)
+test_dataset = CustomCIFARDataset(test_images, test_labels, transform=transform)
+
+train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
+test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
 
 # ----------------------------
 # DEFINIÇÃO DE UMA CNN SIMPLES
@@ -136,17 +149,20 @@ optimizer = optim.Adam(model.parameters(), lr=0.001)
 print("Iniciando treino...")
 train_losses = []
 train_accuracies = []
+val_losses = []
+val_accuracies = []
 
 # Medir o tempo total de treinamento
 start_time = time.time()
 
-for epoch in range(num_epochs):  # Loop de épocas sem barra de progresso
-    epoch_start_time = time.time()  # Tempo de início da época
+for epoch in range(num_epochs):
+    epoch_start_time = time.time()
     running_loss = 0.0
     correct = 0
     total = 0
 
-    for inputs, targets in dataloader:
+    model.train()
+    for inputs, targets in train_loader:
         inputs, targets = inputs.to(device), torch.tensor(targets).to(device)
 
         optimizer.zero_grad()
@@ -156,23 +172,38 @@ for epoch in range(num_epochs):  # Loop de épocas sem barra de progresso
         optimizer.step()
 
         running_loss += loss.item()
-
-        # Calcular acurácia
         _, predicted = torch.max(outputs, 1)
         total += targets.size(0)
         correct += (predicted == targets).sum().item()
 
-    epoch_loss = running_loss / len(dataloader)
+    epoch_loss = running_loss / len(train_loader)
     epoch_accuracy = 100 * correct / total
     train_losses.append(epoch_loss)
     train_accuracies.append(epoch_accuracy)
 
-    # Tempo da época
+    # Validação
+    model.eval()
+    val_loss = 0.0
+    val_correct = 0
+    val_total = 0
+    with torch.no_grad():
+        for inputs, targets in val_loader:
+            inputs, targets = inputs.to(device), torch.tensor(targets).to(device)
+            outputs = model(inputs)
+            loss = criterion(outputs, targets)
+            val_loss += loss.item()
+            _, predicted = torch.max(outputs, 1)
+            val_total += targets.size(0)
+            val_correct += (predicted == targets).sum().item()
+    val_loss /= len(val_loader)
+    val_accuracy = 100 * val_correct / val_total
+    val_losses.append(val_loss)
+    val_accuracies.append(val_accuracy)
+
     epoch_end_time = time.time()
     epoch_duration = epoch_end_time - epoch_start_time
 
-    # Print ao final de cada época
-    print(f"Época {epoch+1}/{num_epochs} - Loss: {epoch_loss:.4f}, Accuracy: {epoch_accuracy:.2f}%, Tempo: {epoch_duration:.2f} segundos")
+    print(f"Época {epoch+1}/{num_epochs} - Loss: {epoch_loss:.4f}, Accuracy: {epoch_accuracy:.2f}%, Val_Loss: {val_loss:.4f}, Val_Acc: {val_accuracy:.2f}%, Tempo: {epoch_duration:.2f} segundos")
 
 # Tempo total de treinamento
 end_time = time.time()
@@ -180,20 +211,39 @@ total_duration = end_time - start_time
 print(f"Treino concluído em {total_duration:.2f} segundos.")
 
 # Salvar o modelo treinado
-model_filename = f"simple_cnn_b{num_batches}_e{num_epochs}.pth"
+model_filename = f"simple_cnn_10_e{num_epochs}.pth"
 model_path = os.path.join(model_dir, model_filename)
 torch.save(model.state_dict(), model_path)
 print(f"Modelo salvo em: {model_path}")
 
+# Teste final no batch de teste
+model.eval()
+test_loss = 0.0
+test_correct = 0
+test_total = 0
+with torch.no_grad():
+    for inputs, targets in test_loader:
+        inputs, targets = inputs.to(device), torch.tensor(targets).to(device)
+        outputs = model(inputs)
+        loss = criterion(outputs, targets)
+        test_loss += loss.item()
+        _, predicted = torch.max(outputs, 1)
+        test_total += targets.size(0)
+        test_correct += (predicted == targets).sum().item()
+test_loss /= len(test_loader)
+test_accuracy = 100 * test_correct / test_total
+print(f"Teste final - Loss: {test_loss:.4f}, Accuracy: {test_accuracy:.2f}%")
+
 # ----------------------------
 # GRÁFICO DE LOSS E ACCURACY
 # ----------------------------
-def plot_training_metrics(train_losses, train_accuracies, graphics_dir):
-    plt.figure(figsize=(10, 5))
+def plot_training_metrics(train_losses, train_accuracies, val_losses, val_accuracies, graphics_dir):
+    plt.figure(figsize=(12, 5))
 
     # Loss
     plt.subplot(1, 2, 1)
-    plt.plot(range(1, len(train_losses) + 1), train_losses, marker='o', label='Loss')
+    plt.plot(range(1, len(train_losses) + 1), train_losses, marker='o', label='Train Loss')
+    plt.plot(range(1, len(val_losses) + 1), val_losses, marker='x', label='Val Loss')
     plt.xlabel('Época')
     plt.ylabel('Loss')
     plt.title('Loss por Época')
@@ -202,7 +252,8 @@ def plot_training_metrics(train_losses, train_accuracies, graphics_dir):
 
     # Accuracy
     plt.subplot(1, 2, 2)
-    plt.plot(range(1, len(train_accuracies) + 1), train_accuracies, marker='o', label='Accuracy')
+    plt.plot(range(1, len(train_accuracies) + 1), train_accuracies, marker='o', label='Train Acc')
+    plt.plot(range(1, len(val_accuracies) + 1), val_accuracies, marker='x', label='Val Acc')
     plt.xlabel('Época')
     plt.ylabel('Accuracy (%)')
     plt.title('Accuracy por Época')
@@ -212,10 +263,10 @@ def plot_training_metrics(train_losses, train_accuracies, graphics_dir):
     plt.tight_layout()
 
     # Salvar gráfico como PNG
-    graph_filename = f"simple_cnn_training_metrics_b{num_batches}_e{num_epochs}.png"
+    graph_filename = f"simple_cnn_training_metrics_10_e{num_epochs}.png"
     graph_path = os.path.join(graphics_dir, graph_filename)
     plt.savefig(graph_path)
     print(f"Gráfico salvo em: {graph_path}")
 
 # Salvar o gráfico após o treinamento
-plot_training_metrics(train_losses, train_accuracies, graphics_dir)
+plot_training_metrics(train_losses, train_accuracies, val_losses, val_accuracies, graphics_dir)
