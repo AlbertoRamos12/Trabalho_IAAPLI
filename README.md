@@ -49,12 +49,7 @@ This repository contains the code and report for a project developed in the Appl
    python codigo/test_classifiers_cnn_simples_cifar10.py -d /path/to/cifar_10_batches -m modelos/simple_cnn_10_e200.pth
    ```
 
-5. **Fine-tune a pre-trained ResNet:**
-   ```bash
-   python codigo/finetune_resnet.py --dataset cifar10 --data_dir /path/to/cifar_10_batches --epochs 10
-   ```
-
-6. **See results:**
+5. **See results:**
    - Training curves and confusion matrices are saved in `graficos/`
    - Model weights are saved in `modelos/`
 
@@ -66,7 +61,7 @@ This repository contains the code and report for a project developed in the Appl
 - **Pre-trained models** (e.g., DenseNet-121) achieve >93% accuracy on CIFAR-10, far surpassing custom models.
 - **CIFAR-100** remains challenging for custom models, highlighting the need for more advanced architectures.
 
-See the full report in [`codigo/template.tex`](codigo/template.tex) for detailed methodology, results, tables, and discussion.
+See the full report in [`Image_Classification_CIFAR.pdf`](Image_Classification_CIFAR.pdf) for detailed methodology, results, tables, and discussion.
 
 ## Authors
 
